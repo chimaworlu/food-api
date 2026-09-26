@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  DELIVERED
+  CANCELLED
+}
+
+model Restaurant {
+  id          String     @id @default(cuid())
+  name        String
+  cuisineType String
+  address     String
+  rating      Float
+  isOpen      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  menuItems   MenuItem[]
+  orders      Order[]
+
+  @@index([cuisineType])
+  @@index([rating])
+}
+
+model MenuItem {
+  id           String      @id @default(cuid())
+  restaurantId String
+  name         String
+  description  String?
+  priceMinor   Int
+  category     String
+  isAvailable  Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+
+  @@index([restaurantId])
+  @@index([category])
+  @@index([priceMinor])
+}
+
+model Order {
+  id               String      @id @default(cuid())
+  restaurantId     String
+  customerName     String
+  customerEmail    String
+  status           OrderStatus
+  totalAmountMinor Int
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  restaurant       Restaurant  @relation(fields: [restaurantId], references: [id])
+  items            OrderItem[]
+
+  @@index([restaurantId])
+  @@index([status])
+  @@index([customerEmail])
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  menuItemId String
+  quantity   Int
+  priceMinor Int
+  createdAt  DateTime @default(now())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
