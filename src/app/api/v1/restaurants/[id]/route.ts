@@ -1,17 +1,20 @@
 import { prisma } from "@/lib/db";
-import { enforceRateLimit } from "@/lib/rate-limit";
+import { enforceRateLimit, withRateLimitHeaders } from "@/lib/rate-limit";
 import { internalError, notFound, success } from "@/lib/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, { params }: RouteContext) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
   const { id } = await params;
+  return withRateLimitHeaders(await getRestaurant(id), rateLimit);
+}
 
+async function getRestaurant(id: string) {
   try {
     const restaurant = await prisma.restaurant.findUnique({
       where: { id },

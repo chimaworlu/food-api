@@ -5,7 +5,7 @@ import {
   type Prisma,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { enforceRateLimit } from "@/lib/rate-limit";
+import { enforceRateLimit, withRateLimitHeaders } from "@/lib/rate-limit";
 import {
   created,
   internalError,
@@ -67,11 +67,15 @@ const ORDER_LIST_SELECT = {
 } satisfies Prisma.OrderSelect;
 
 export async function GET(request: Request) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
+  return withRateLimitHeaders(await listOrders(request), rateLimit);
+}
+
+async function listOrders(request: Request) {
   const query = validateQuery(request, querySchema);
   if (!query.ok) {
     return query.response;
@@ -110,11 +114,15 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
+  return withRateLimitHeaders(await createOrder(request), rateLimit);
+}
+
+async function createOrder(request: Request) {
   const body = await validateJsonBody(request, createOrderSchema);
   if (!body.ok) {
     return body.response;

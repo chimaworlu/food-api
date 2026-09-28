@@ -5,10 +5,19 @@ import type { NextResponse } from "next/server";
 import { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from "./config";
 import { tooManyRequests, type ErrorBody } from "./response";
 
+type RateLimitBackend = "upstash" | "memory";
+
 type LimitResult = {
   success: boolean;
   /** Unix timestamp in milliseconds when the caller's window resets. */
   reset: number;
+};
+
+export type RateLimitResult = {
+  /** A 429 response when the limit is exhausted, otherwise `null`. */
+  response: NextResponse<ErrorBody> | null;
+  /** Headers every response from the route should carry. */
+  headers: Record<string, string>;
 };
 
 type Bucket = {
@@ -107,6 +116,8 @@ function createUpstashLimiter(): Ratelimit | null {
 
 const upstashLimiter = createUpstashLimiter();
 
+const backend: RateLimitBackend = upstashLimiter ? "upstash" : "memory";
+
 async function limit(ip: string): Promise<LimitResult> {
   if (!upstashLimiter) {
     return limitInMemory(ip);
@@ -123,25 +134,39 @@ async function limit(ip: string): Promise<LimitResult> {
 }
 
 /**
- * Counts this request against the caller's window. Resolves to a 429 response
- * when the limit is already exhausted, otherwise `null` so the route can
- * continue. Await this before any database work.
+ * Counts this request against the caller's window. `response` is a 429 when
+ * the limit is already exhausted, otherwise `null` so the route can continue.
+ * Await this before any database work, and pass every response the route
+ * returns through `withRateLimitHeaders`.
  */
-export async function enforceRateLimit(
-  request: Request,
-): Promise<NextResponse<ErrorBody> | null> {
+export async function enforceRateLimit(request: Request): Promise<RateLimitResult> {
   const { success, reset } = await limit(getClientIp(request));
+  const headers = { "X-RateLimit-Backend": backend };
 
   if (success) {
-    return null;
+    return { response: null, headers };
   }
 
   const retryAfterSeconds = (reset - Date.now()) / 1_000;
 
-  return tooManyRequests(
+  const response = tooManyRequests(
     `Rate limit of ${RATE_LIMIT_MAX} requests per ${Math.round(
       RATE_LIMIT_WINDOW_MS / 1_000,
     )}s exceeded. Retry after ${Math.ceil(retryAfterSeconds)}s.`,
     retryAfterSeconds,
   );
+
+  const result = { response, headers };
+  withRateLimitHeaders(response, result);
+  return result;
+}
+
+export function withRateLimitHeaders<T extends Response>(
+  response: T,
+  rateLimit: RateLimitResult,
+): T {
+  for (const [name, value] of Object.entries(rateLimit.headers)) {
+    response.headers.set(name, value);
+  }
+  return response;
 }

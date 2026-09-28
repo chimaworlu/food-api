@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { enforceRateLimit } from "@/lib/rate-limit";
+import { enforceRateLimit, withRateLimitHeaders } from "@/lib/rate-limit";
 import { internalError, success } from "@/lib/response";
 import { listQuerySchema, queryFilters, validateQuery } from "@/lib/validate-query";
 
@@ -16,11 +16,15 @@ const querySchema = listQuerySchema(SORTABLE_FIELDS, {
 });
 
 export async function GET(request: Request) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
+  return withRateLimitHeaders(await listMenuItems(request), rateLimit);
+}
+
+async function listMenuItems(request: Request) {
   const query = validateQuery(request, querySchema);
   if (!query.ok) {
     return query.response;

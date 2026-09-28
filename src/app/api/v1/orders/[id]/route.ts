@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { OrderStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { enforceRateLimit } from "@/lib/rate-limit";
+import { enforceRateLimit, withRateLimitHeaders } from "@/lib/rate-limit";
 import {
   badRequest,
   internalError,
@@ -18,13 +18,16 @@ const updateOrderSchema = z.object({
 });
 
 export async function GET(request: Request, { params }: RouteContext) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
   const { id } = await params;
+  return withRateLimitHeaders(await getOrder(id), rateLimit);
+}
 
+async function getOrder(id: string) {
   try {
     const order = await prisma.order.findUnique({
       where: { id },
@@ -42,12 +45,16 @@ export async function GET(request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
   const { id } = await params;
+  return withRateLimitHeaders(await updateOrder(request, id), rateLimit);
+}
+
+async function updateOrder(request: Request, id: string) {
   const body = await validateJsonBody(request, updateOrderSchema);
 
   if (!body.ok) {
@@ -85,13 +92,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {
-  const limited = await enforceRateLimit(request);
-  if (limited) {
-    return limited;
+  const rateLimit = await enforceRateLimit(request);
+  if (rateLimit.response) {
+    return rateLimit.response;
   }
 
   const { id } = await params;
+  return withRateLimitHeaders(await deleteOrder(id), rateLimit);
+}
 
+async function deleteOrder(id: string) {
   try {
     // OrderItem rows cascade on delete, so one statement is enough.
     const deleted = await prisma.order.deleteMany({ where: { id } });
