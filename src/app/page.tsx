@@ -1,3 +1,4 @@
+// Food API v1 - deployed
 "use client";
 
 import { useEffect, useState } from "react";
