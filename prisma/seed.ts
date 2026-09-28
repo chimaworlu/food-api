@@ -1,4 +1,8 @@
 import "dotenv/config";
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
+
+import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, OrderStatus, Prisma } from "../src/generated/prisma/client";
 
@@ -11,7 +15,17 @@ const ITEMS_PER_ORDER = { min: 1, max: 5 } as const;
 const QUANTITY_PER_ITEM = { min: 1, max: 5 } as const;
 const PRICE_MINOR = { min: 50_000, max: 2_000_000 } as const;
 const FAKER_SEED = 20260926;
-const RESTAURANTS_PER_BATCH = 5;
+const RESTAURANTS_PER_BATCH = 2;
+
+/**
+ * The database is remote (e.g. Render Frankfurt), so transactions and pool
+ * connections need generous timeouts, connection keep-alive, and retry resilience
+ * against transient network hiccups.
+ */
+const POOL_MAX = 10;
+const POOL_CONNECTION_TIMEOUT_MS = 45_000;
+const TRANSACTION_MAX_WAIT_MS = 60_000;
+const TRANSACTION_TIMEOUT_MS = 600_000;
 
 const CUISINES = [
   "Nigerian",
@@ -480,6 +494,29 @@ async function upsertRestaurant(prisma: PrismaClient, plan: RestaurantPlan) {
   await prisma.$transaction(operations);
 }
 
+async function upsertRestaurantWithRetry(
+  prisma: PrismaClient,
+  plan: RestaurantPlan,
+  maxRetries = 4,
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await upsertRestaurant(prisma, plan);
+      return;
+    } catch (err: unknown) {
+      const isLastAttempt = attempt === maxRetries;
+      if (isLastAttempt) {
+        throw err;
+      }
+      const delayMs = attempt * 2500;
+      console.warn(
+        `[seed] Notice: Retrying restaurant "${plan.name}" (attempt ${attempt}/${maxRetries}) in ${delayMs / 1000}s due to transient connection issue...`,
+      );
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
+  }
+}
+
 async function main() {
   const connectionString = process.env["DATABASE_URL"];
   if (!connectionString) {
@@ -488,11 +525,31 @@ async function main() {
     );
   }
 
+  const pool = new pg.Pool({
+    connectionString,
+    max: POOL_MAX,
+    connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
+    keepAlive: true,
+  });
+
+  pool.on("error", (err) => {
+    console.warn("[seed] Pool background warning:", err.message);
+  });
+
+  const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    adapter,
+    transactionOptions: {
+      maxWait: TRANSACTION_MAX_WAIT_MS,
+      timeout: TRANSACTION_TIMEOUT_MS,
+    },
   });
 
   try {
+    console.log("Warming up remote database connection...");
+    await prisma.$queryRaw`SELECT 1`;
+    console.log("Database connection established! Starting seed...");
+
     const plans = buildPlans();
     const expected = {
       restaurants: plans.length,
@@ -506,7 +563,11 @@ async function main() {
 
     for (let i = 0; i < plans.length; i += RESTAURANTS_PER_BATCH) {
       const batch = plans.slice(i, i + RESTAURANTS_PER_BATCH);
-      await Promise.all(batch.map((plan) => upsertRestaurant(prisma, plan)));
+      await Promise.all(
+        batch.map((plan) => upsertRestaurantWithRetry(prisma, plan)),
+      );
+      const completed = Math.min(i + RESTAURANTS_PER_BATCH, plans.length);
+      console.log(`  [${completed}/${plans.length}] Restaurants seeded...`);
     }
 
     const [restaurants, menuItems, orders, orderItems] = await Promise.all([
