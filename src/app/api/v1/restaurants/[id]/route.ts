@@ -5,7 +5,7 @@ import { internalError, notFound, success } from "@/lib/response";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, { params }: RouteContext) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }

@@ -67,7 +67,7 @@ const ORDER_LIST_SELECT = {
 } satisfies Prisma.OrderSelect;
 
 export async function GET(request: Request) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }

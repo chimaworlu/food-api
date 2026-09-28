@@ -18,7 +18,7 @@ const updateOrderSchema = z.object({
 });
 
 export async function GET(request: Request, { params }: RouteContext) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }
@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }
@@ -85,7 +85,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 }
 
 export async function DELETE(request: Request, { params }: RouteContext) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }

@@ -29,7 +29,7 @@ const LIST_SELECT = {
 } satisfies Prisma.RestaurantSelect;
 
 export async function GET(request: Request) {
-  const limited = enforceRateLimit(request);
+  const limited = await enforceRateLimit(request);
   if (limited) {
     return limited;
   }
