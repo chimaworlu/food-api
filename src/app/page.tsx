@@ -1,68 +1,121 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+
 import styles from "./page.module.css";
 
+type Restaurant = {
+  id: string;
+  name: string;
+  cuisineType: string;
+  address: string;
+};
+
+type ListResponse = {
+  data: Restaurant[];
+  meta: { total: number; limit: number; offset: number; hasMore: boolean };
+};
+
+type ErrorResponse = {
+  error: { code: string; message: string };
+};
+
+const PAGE_SIZE = 20;
+
 export default function Home() {
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadAllRestaurants() {
+      const collected: Restaurant[] = [];
+      let offset = 0;
+      let hasMore = true;
+      let reportedTotal = 0;
+
+      try {
+        while (hasMore) {
+          const url = `/api/v1/restaurants?limit=${PAGE_SIZE}&offset=${offset}&sort=name&order=asc`;
+          const response = await fetch(url, { signal: controller.signal });
+          const body = (await response.json()) as ListResponse | ErrorResponse;
+
+          if (!response.ok || "error" in body) {
+            throw new Error(
+              "error" in body
+                ? body.error.message
+                : `Request failed with status ${response.status}.`,
+            );
+          }
+
+          collected.push(...body.data);
+          reportedTotal = body.meta.total;
+          offset += body.data.length;
+          hasMore = body.meta.hasMore && body.data.length > 0;
+        }
+
+        setRestaurants(collected);
+        setTotal(reportedTotal);
+        setError(null);
+      } catch (cause) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not load restaurants.",
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadAllRestaurants();
+
+    return () => controller.abort();
+  }, []);
+
   return (
     <div className={styles.page}>
       <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+        <header className={styles.header}>
+          <h1 className={styles.title}>Restaurants</h1>
+          <p className={styles.subtitle}>
+            {isLoading
+              ? "Loading restaurants…"
+              : error === null
+                ? `${restaurants.length} of ${total} shown`
+                : "Unavailable"}
           </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+        </header>
+
+        {error !== null && (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        )}
+
+        {restaurants.length > 0 && (
+          <ul className={styles.grid}>
+            {restaurants.map((restaurant) => (
+              <li key={restaurant.id} className={styles.card}>
+                <h2 className={styles.cardName}>{restaurant.name}</h2>
+                <p className={styles.cardCuisine}>{restaurant.cuisineType}</p>
+                <p className={styles.cardAddress}>{restaurant.address}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!isLoading && error === null && restaurants.length === 0 && (
+          <p className={styles.empty}>No restaurants found.</p>
+        )}
       </main>
     </div>
   );
