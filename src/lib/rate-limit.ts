@@ -91,19 +91,19 @@ function limitInMemory(ip: string): LimitResult {
 
 /**
  * Sliding-window limiter shared across all serverless instances through Upstash
- * Redis. Only created when UPSTASH_REDIS_REST_URL is set, so local development
+ * Redis. Only created when KV_REST_API_URL is set, so local development
  * works without Upstash by falling back to the in-memory limiter.
  */
 function createUpstashLimiter(): Ratelimit | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const url = process.env.KV_REST_API_URL;
   if (!url) {
     return null;
   }
 
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const token = process.env.KV_REST_API_TOKEN;
   if (!token) {
     throw new Error(
-      "UPSTASH_REDIS_REST_URL is set but UPSTASH_REDIS_REST_TOKEN is not. Set both, or neither to use the in-memory limiter.",
+      "KV_REST_API_URL is set but KV_REST_API_TOKEN is not. Set both, or neither to use the in-memory limiter.",
     );
   }
 
