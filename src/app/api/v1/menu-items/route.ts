@@ -35,8 +35,14 @@ async function listMenuItems(request: Request) {
 
   const where: Prisma.MenuItemWhereInput = {
     ...(category === undefined ? {} : { category }),
-    ...(maxPrice === undefined ? {} : { priceMinor: { lte: maxPrice } }),
-    ...(minPrice === undefined ? {} : { priceMinor: { gte: minPrice } }),
+    ...(minPrice === undefined && maxPrice === undefined
+      ? {}
+      : {
+          priceMinor: {
+            ...(minPrice === undefined ? {} : { gte: minPrice }),
+            ...(maxPrice === undefined ? {} : { lte: maxPrice }),
+          },
+        }),
     ...(isAvailable === undefined ? {} : { isAvailable }),
   };
 
